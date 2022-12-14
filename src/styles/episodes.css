@@ -1,0 +1,15 @@
+.quality-button {
+	border: solid #fff;
+	border-width: 1px;
+	border-radius: 10px;
+	color: #fff;
+	font-weight: 400;
+	cursor: pointer;
+	transition: 0.2s;
+}
+
+.quality-button:hover {
+	background-color: #fff;
+	border-radius: 8px;
+	color: #111;
+}

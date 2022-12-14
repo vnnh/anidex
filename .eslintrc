@@ -1,0 +1,29 @@
+{
+	"parser": "@typescript-eslint/parser",
+	"parserOptions": {
+		"jsx": true
+	},
+	"plugins": ["@typescript-eslint", "prettier", "@kapouer/no-return-in-loop"],
+	"extends": [
+		"eslint:recommended",
+		"plugin:@typescript-eslint/recommended",
+		"plugin:prettier/recommended"
+	],
+	"rules": {
+		"prettier/prettier": [
+			"warn",
+			{
+				"semi": true,
+				"trailingComma": "all",
+				"singleQuote": false,
+				"printWidth": 120,
+				"tabWidth": 4,
+				"useTabs": true
+			}
+		],
+		"prefer-const": 0,
+		"@typescript-eslint/no-array-constructor": 0,
+		"@kapouer/no-return-in-loop/no-return-in-loop": "error",
+		"@typescript-eslint/no-non-null-assertion": 0
+	}
+}
