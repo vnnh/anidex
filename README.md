@@ -1,5 +1,7 @@
 <p align="center">
-anidex
+<img style="width: 128px; height: 128px" src="/src-tauri/icons/128x128.png" />
+<br />
+<b>anidex</b>
 </p>
 
 #  Attributions
