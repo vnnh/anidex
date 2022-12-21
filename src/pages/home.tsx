@@ -38,19 +38,26 @@ export const Home = () => {
 	}, [ctx.updateRecentlyWatchedCounter]);
 
 	useEffect(() => {
+		let exit: (e: KeyboardEvent) => void;
 		if (isSearching) {
-			const exit = (e: KeyboardEvent) => {
+			exit = (e) => {
 				if (e.key === "Escape") {
 					setIsSearching(false);
 				}
 			};
-
-			window.addEventListener("keydown", exit);
-
-			return () => {
-				window.removeEventListener("keydown", exit);
+		} else {
+			exit = (e) => {
+				if (e.key === "Enter") {
+					setIsSearching(true);
+				}
 			};
 		}
+
+		window.addEventListener("keydown", exit);
+
+		return () => {
+			window.removeEventListener("keydown", exit);
+		};
 	}, [isSearching]);
 
 	return (

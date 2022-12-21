@@ -19,7 +19,10 @@ export const Search = ({ onClickOff }: { onClickOff: () => void }) => {
 		const enter = (e: KeyboardEvent) => {
 			if (e.key === "Enter") {
 				const value = inputRef.current?.value ?? "";
-				if (value === "") return;
+				if (value === "") {
+					onClickOff();
+					return;
+				}
 
 				searchAnime(value)
 					.then((v) => {
