@@ -89,12 +89,14 @@ export const Carousel = (props: { anime: Array<AnimeCard>; leftOffset?: number }
 			let x0: number | undefined = undefined;
 			let progress = 0;
 			const scrollCarousel = () => {
-				trackRef.current!.animate(
+				trackRef.current!.style.transform = `translate(${progress}vmin, 0%)`;
+
+				/*trackRef.current!.animate(
 					{
 						transform: `translate(${progress}vmin, 0%)`,
 					},
 					{ duration: 1200, fill: "forwards" },
-				);
+				);*/
 
 				trackRef.current!.setAttribute("progress", `${progress}`);
 
@@ -106,12 +108,15 @@ export const Carousel = (props: { anime: Array<AnimeCard>; leftOffset?: number }
 					const isOnScreen = x >= -boundingRect.width && x < window.innerWidth;
 
 					if (isOnScreen) {
-						(trackItem as HTMLImageElement).animate(
+						(trackItem as HTMLImageElement).style.objectPosition = `${
+							50 - (x / window.innerWidth) * 50
+						}% center`;
+						/*(trackItem as HTMLImageElement).animate(
 							{
 								objectPosition: `${50 - (x / window.innerWidth) * 50}% center`,
 							},
 							{ duration: 1200, fill: "forwards" },
-						);
+						);*/
 						trackItem.setAttribute("progress", `${50 - (x / window.innerWidth) * 50}`);
 					}
 				});
