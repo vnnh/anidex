@@ -1,17 +1,20 @@
 import { AnimatePresence } from "framer-motion";
 import { useContext, useEffect, useState } from "preact/hooks";
 import { Outlet } from "react-router";
-import { AnimeCard, getRecentEpisodes, getTrending } from "../api/anilist";
+import { AnilistAnimeId, AnilistEpisodeId, AnimeCard, getRecentEpisodes, getTrending } from "../api/anilist";
 import { AppContext } from "../components/app";
 import { Carousel } from "../components/carousel";
 import "../styles/search.css";
-import { getRecentlyWatched, RecentlyWatched } from "./episodes";
+import { getPlaybackProgress, getRecentlyWatched } from "./episodes";
 import { Search } from "./search";
 
 export const Home = () => {
 	const [recent, setRecent] = useState<Array<AnimeCard>>([]);
 	const [trending, setTrending] = useState<Array<AnimeCard>>([]);
-	const [recentlyWatched, setRecentlyWatched] = useState<Array<RecentlyWatched>>([]);
+	const [store, setStore] = useState<{
+		recentlyWatched: Array<RecentlyWatched>;
+		playbackProgress: Map<AnilistAnimeId, PlaybackProgress>;
+	}>({ recentlyWatched: [], playbackProgress: new Map() });
 	const [isSearching, setIsSearching] = useState(false);
 	const ctx = useContext(AppContext);
 
@@ -30,9 +33,17 @@ export const Home = () => {
 	}, []);
 
 	useEffect(() => {
-		getRecentlyWatched()
+		Promise.all([getRecentlyWatched(), getPlaybackProgress()])
 			.then((v) => {
-				setRecentlyWatched(v);
+				const progressMap = new Map<AnilistAnimeId, PlaybackProgress>();
+				for (const [id, progress] of v[1]) {
+					progressMap.set(id, progress);
+				}
+
+				setStore({
+					recentlyWatched: v[0],
+					playbackProgress: progressMap,
+				});
 			})
 			.catch((e) => console.log(e));
 	}, [ctx.updateRecentlyWatchedCounter]);
@@ -81,7 +92,7 @@ export const Home = () => {
 				</div>
 
 				<br />
-				{recentlyWatched.length > 0 && (
+				{store.recentlyWatched.length > 0 && (
 					<div style="position: relative; width: 100vw; height: 30vmin;">
 						<p
 							class="title-text one-per-line no-select"
@@ -89,7 +100,26 @@ export const Home = () => {
 						>
 							CONTINUE WATCHING
 						</p>
-						<Carousel anime={recentlyWatched} leftOffset={50} />
+						<Carousel
+							anime={store.recentlyWatched.map((recent) => {
+								const animeInfo = store.playbackProgress.get(recent.id);
+								if (animeInfo === undefined)
+									return {
+										id: recent.id,
+										title: { english: "not found", native: "not found", romaji: "not found" },
+										cover: "",
+										episodeNumber: 0,
+									};
+
+								return {
+									id: recent.id,
+									title: animeInfo?.meta.title,
+									cover: animeInfo?.meta.cover,
+									episodeNumber: animeInfo?.[recent.episodeId as AnilistEpisodeId].episodeNumber,
+								};
+							})}
+							leftOffset={50}
+						/>
 					</div>
 				)}
 				<p
