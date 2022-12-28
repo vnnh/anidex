@@ -4,7 +4,7 @@
 <b>anidex</b>
 </p>
 
-https://user-images.githubusercontent.com/90565423/207517781-94c770c4-8c32-4bb5-9f97-304053e274bf.mp4
+https://user-images.githubusercontent.com/90565423/209762028-7254e8bd-7053-439a-8c37-55b7bc4f846a.mp4
 
 #  Attributions
 - Uses slightly modified version of rpc-discord crate
