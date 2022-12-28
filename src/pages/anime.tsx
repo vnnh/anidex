@@ -1,12 +1,13 @@
 import { Breadcrumbs } from "../components/breadcrumbs";
 import { motion } from "framer-motion";
 import { Outlet, useNavigate } from "react-router";
-import { useContext, useEffect } from "preact/hooks";
+import { useContext, useEffect, useState } from "preact/hooks";
 import { AppContext } from "../components/app";
 import gradient from "../util/gradient";
 import { getAnime } from "../api/anilist";
 import { VNode } from "preact";
 import { animeInfoCache } from "../util/cache";
+import { getPlanToWatch, setPlanToWatch } from "../util/store";
 
 const Chip = ({ text, filled }: { text: string | VNode; filled: boolean }) => {
 	if (filled) {
@@ -30,6 +31,8 @@ const VerticalDivider = () => {
 
 export const Anime = () => {
 	const navigate = useNavigate();
+	const [planEntry, setPlanEntry] = useState<PlanToWatch | true | null>(null);
+	const [updatePlanEntry, setUpdatePlanEntry] = useState(0);
 	const ctx = useContext(AppContext);
 	const el = ctx.transitionElement as HTMLImageElement | undefined;
 	const bounds = el ? el.getBoundingClientRect() : undefined;
@@ -53,6 +56,14 @@ export const Anime = () => {
 	};
 
 	useEffect(getAnimeInfo, [animeCard?.id]);
+
+	useEffect(() => {
+		if (animeCard?.id !== undefined) {
+			getPlanToWatch(animeCard.id)
+				.then((v) => setPlanEntry((v as PlanToWatch) ?? true))
+				.catch((e) => console.log(e));
+		}
+	}, [updatePlanEntry, animeCard?.id, ctx.updateRecentlyWatchedCounter]);
 
 	return (
 		<div style="position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 4;">
@@ -149,10 +160,41 @@ export const Anime = () => {
 							play_arrow
 						</p>
 					</div>
+
+					{animeInfo !== undefined && planEntry !== undefined && (
+						<div
+							class={planEntry === true ? "plan-button" : "unplan-button"}
+							style="z-index: 4; position: absolute; top: -2vmin; right: calc(30px + 14vmin); border-radius: 50%; width: 4vmin; height: 4vmin;"
+							onClick={async () => {
+								await setPlanToWatch(
+									animeInfo.id,
+									planEntry === true
+										? {
+												title: animeInfo.title,
+												cover: animeInfo.cover,
+												date: new Date().toUTCString(),
+												total: animeInfo.totalEpisodes,
+										  }
+										: undefined,
+								);
+
+								setUpdatePlanEntry((v) => v + 1);
+								ctx.setUpdateRecentlyWatchedCounter((v) => v + 1);
+							}}
+						>
+							<p
+								class="material-icons"
+								style="margin-top: 25%; width: 100%; height: 100%; text-align: center; font-size: 2vmin; color: #fff"
+							>
+								watch_later
+							</p>
+						</div>
+					)}
+
 					{animeInfo !== undefined && (
 						<div
 							class="refresh-button"
-							style="z-index: 4; position: absolute; top: -2vmin; right: calc(30px + 14vmin); border-radius: 50%; width: 4vmin; height: 4vmin;"
+							style="z-index: 4; position: absolute; top: -2vmin; right: calc(30px + 20vmin); border-radius: 50%; width: 4vmin; height: 4vmin;"
 							onClick={() => {
 								animeInfoCache.delete(animeInfo.id);
 								getAnimeInfo();

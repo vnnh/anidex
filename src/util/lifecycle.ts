@@ -1,4 +1,4 @@
-import { savePlaybackProgress } from "../pages/episodes";
+import { savePlaybackProgress } from "./store";
 
 export const onWindowClose = async () => {
 	const videoPlayer = document.getElementById("anime-player");

@@ -73,15 +73,37 @@ button:active {
 	background-color: #552f9b;
 }
 
-.refresh-button {
+.unplan-button {
 	cursor: pointer;
 	transition: 0.2s;
 	background-color: rgb(255, 55, 55);
 }
 
-.refresh-button:hover {
+.unplan-button:hover {
 	filter: drop-shadow(0 0 1em rgb(255, 55, 55));
 	background-color: rgb(255, 45, 45);
+}
+
+.plan-button {
+	cursor: pointer;
+	transition: 0.2s;
+	background-color: rgb(55, 155, 55);
+}
+
+.plan-button:hover {
+	filter: drop-shadow(0 0 1em rgb(55, 155, 55));
+	background-color: rgb(45, 155, 45);
+}
+
+.refresh-button {
+	cursor: pointer;
+	transition: 0.2s;
+	background-color: rgb(85, 85, 85);
+}
+
+.refresh-button:hover {
+	filter: drop-shadow(0 0 1em rgb(85, 85, 85));
+	background-color: rgb(75, 75, 75);
 }
 
 .under-titlebar {

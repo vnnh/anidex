@@ -1,83 +1,14 @@
-import { StateUpdater, useContext, useEffect, useRef, useState } from "preact/hooks";
+import { useContext, useEffect, useRef, useState } from "preact/hooks";
 import { AppContext } from "../components/app";
 import { Breadcrumbs } from "../components/breadcrumbs";
 import { motion } from "framer-motion";
 import gradient from "../util/gradient";
-import { AnilistAnimeId, AnilistEpisodeId, getStreamingLinks, StreamingLinks } from "../api/anilist";
+import { AnilistEpisodeId, getStreamingLinks, StreamingLinks } from "../api/anilist";
 import HLS from "hls.js";
 import { window } from "@tauri-apps/api";
-import { Store } from "tauri-plugin-store-api";
 import "../styles/episodes.css";
 import { clearActivity, setActivity } from "../api/discord";
-
-const FINISHED_THRESHOLD = 60; //seconds
-
-const playbackProgressStore = new Store(".playback-progress.dat");
-
-export const getRecentlyWatched = async (): Promise<Array<RecentlyWatched>> => {
-	return (await playbackProgressStore.get("recent")) ?? [];
-};
-
-export const getPlaybackProgress = async () => {
-	return (await playbackProgressStore.entries()) as Array<[AnilistAnimeId, PlaybackProgress]>;
-};
-
-export const savePlaybackProgress = async (
-	video: HTMLVideoElement,
-	time?: number,
-	setRecentlyWatched?: StateUpdater<number>,
-) => {
-	time ??= video.currentTime;
-	if (time <= 0) return;
-
-	const animeId = video.getAttribute("anime-id");
-	const episodeId = video.getAttribute("episode-id");
-
-	if (animeId === null || episodeId === null) return;
-
-	const _episodeNumber = video.getAttribute("episode-number");
-	const episodeNumber = _episodeNumber !== null ? parseInt(_episodeNumber) : 0;
-
-	const meta = JSON.parse(video.getAttribute("anime-meta") ?? "{}");
-	const isFinished = time >= video.duration - FINISHED_THRESHOLD;
-	const newStore: PlaybackProgress = {
-		...((await playbackProgressStore.get(`${animeId}`)) ?? {}),
-		[episodeId as string]: {
-			finished: isFinished,
-			lastTime: time,
-			episodeNumber,
-			date: new Date().toUTCString(),
-		},
-		meta: {
-			title: meta.title,
-			cover: meta.cover,
-			latest: { id: episodeId },
-			completed: isFinished && episodeNumber === meta.total ? { date: new Date().toUTCString() } : undefined,
-		},
-	};
-	await playbackProgressStore.set(`${animeId}`, newStore);
-
-	const recent = ((await playbackProgressStore.get<Array<RecentlyWatched>>("recent")) ?? []).filter(
-		(v) => v.id !== animeId,
-	);
-
-	let existing: RecentlyWatched = {
-		id: animeId as AnilistAnimeId,
-		episodeId,
-	};
-
-	recent.unshift(existing);
-
-	while (recent.length > 10) {
-		recent.pop();
-	}
-
-	await playbackProgressStore.set("recent", recent);
-
-	if (setRecentlyWatched !== undefined) setRecentlyWatched((prev) => prev + 1);
-
-	return newStore;
-};
+import { getPlaybackProgress, savePlaybackProgress } from "../util/store";
 
 export const Episodes = () => {
 	const ctx = useContext(AppContext);
@@ -92,11 +23,11 @@ export const Episodes = () => {
 
 	useEffect(() => {
 		if (animeInfo?.id) {
-			playbackProgressStore.get<PlaybackProgress>(animeInfo.id).then((v) => {
+			getPlaybackProgress(animeInfo.id).then((v) => {
 				if (v === null) return;
-				if (v.meta.latest) {
-					const episodeNumber = v[v.meta.latest.id as AnilistEpisodeId].episodeNumber;
-					const episodeId = v.meta.latest.id;
+				if ((v as PlaybackProgress).meta.latest) {
+					const episodeNumber = (v as PlaybackProgress)[(v as PlaybackProgress).meta.latest.id].episodeNumber;
+					const episodeId = (v as PlaybackProgress).meta.latest.id;
 					const episodeMatch = animeInfo.episodes[episodeNumber - 1];
 					if (episodeMatch.id === episodeId) {
 						setCurrentEpisode(episodeMatch);
@@ -105,7 +36,7 @@ export const Episodes = () => {
 						if (episodeMatch !== undefined) setCurrentEpisode(episodeMatch);
 					}
 				}
-				setUserProgress(v);
+				setUserProgress(v as PlaybackProgress);
 			});
 		}
 	}, [animeInfo?.id]);

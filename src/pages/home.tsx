@@ -1,12 +1,13 @@
 import { AnimatePresence } from "framer-motion";
 import { useContext, useEffect, useState } from "preact/hooks";
 import { Outlet } from "react-router";
-import { AnilistAnimeId, AnilistEpisodeId, AnimeCard, getRecentEpisodes, getTrending } from "../api/anilist";
+import { AnilistAnimeId, AnimeCard, getRecentEpisodes, getTrending } from "../api/anilist";
 import { AppContext } from "../components/app";
 import { Carousel } from "../components/carousel";
 import "../styles/search.css";
-import { getPlaybackProgress, getRecentlyWatched } from "./episodes";
+import { getPlanToWatch, getPlaybackProgress, getRecentlyWatched } from "../util/store";
 import { Search } from "./search";
+import { ViewHistory } from "./viewHistory";
 
 export const Home = () => {
 	const [recent, setRecent] = useState<Array<AnimeCard>>([]);
@@ -14,8 +15,11 @@ export const Home = () => {
 	const [store, setStore] = useState<{
 		recentlyWatched: Array<RecentlyWatched>;
 		playbackProgress: Map<AnilistAnimeId, PlaybackProgress>;
-	}>({ recentlyWatched: [], playbackProgress: new Map() });
+		rawPlaybackProgress: Array<[AnilistAnimeId, PlaybackProgress]>;
+		planToWatch: Array<[AnilistAnimeId, PlanToWatch]>;
+	}>({ recentlyWatched: [], playbackProgress: new Map(), rawPlaybackProgress: [], planToWatch: [] });
 	const [isSearching, setIsSearching] = useState(false);
+	const [viewHistory, setViewHistory] = useState(false);
 	const ctx = useContext(AppContext);
 
 	useEffect(() => {
@@ -33,16 +37,18 @@ export const Home = () => {
 	}, []);
 
 	useEffect(() => {
-		Promise.all([getRecentlyWatched(), getPlaybackProgress()])
+		Promise.all([getRecentlyWatched(), getPlaybackProgress(), getPlanToWatch()])
 			.then((v) => {
 				const progressMap = new Map<AnilistAnimeId, PlaybackProgress>();
-				for (const [id, progress] of v[1]) {
+				for (const [id, progress] of v[1] as Array<[AnilistAnimeId, PlaybackProgress]>) {
 					progressMap.set(id, progress);
 				}
 
 				setStore({
 					recentlyWatched: v[0],
 					playbackProgress: progressMap,
+					rawPlaybackProgress: v[1] as Array<[AnilistAnimeId, PlaybackProgress]>,
+					planToWatch: v[2] as Array<[AnilistAnimeId, PlanToWatch]>,
 				});
 			})
 			.catch((e) => console.log(e));
@@ -50,10 +56,11 @@ export const Home = () => {
 
 	useEffect(() => {
 		let exit: (e: KeyboardEvent) => void;
-		if (isSearching) {
+		if (isSearching || viewHistory) {
 			exit = (e) => {
 				if (e.key === "Escape") {
 					setIsSearching(false);
+					setViewHistory(false);
 				}
 			};
 		} else {
@@ -69,7 +76,7 @@ export const Home = () => {
 		return () => {
 			window.removeEventListener("keydown", exit);
 		};
-	}, [isSearching]);
+	}, [isSearching, viewHistory]);
 
 	return (
 		<>
@@ -88,6 +95,20 @@ export const Home = () => {
 						<span style="font-family: Lato; margin-left: 5px; font-size: 16px; font-weight: 200; color: #aaa">
 							Search anime...
 						</span>
+					</div>
+					<div
+						class="searchbar"
+						style="width: 35px; height: 35px; margin: 5px; display: flex; align-items: center; justify-content: center;"
+						onClick={() => {
+							setViewHistory(true);
+						}}
+					>
+						<div
+							class="material-icons search-icon"
+							style="font-size: 20px; height: 20px; margin-right: 1px"
+						>
+							history
+						</div>
 					</div>
 				</div>
 
@@ -115,12 +136,45 @@ export const Home = () => {
 									id: recent.id,
 									title: animeInfo?.meta.title,
 									cover: animeInfo?.meta.cover,
-									episodeNumber: animeInfo?.[recent.episodeId as AnilistEpisodeId].episodeNumber,
+									episodeNumber: animeInfo?.[recent.episodeId].episodeNumber,
+									totalEpisodes: animeInfo.meta.total,
 								};
 							})}
 							leftOffset={50}
 						/>
 					</div>
+				)}
+				{store.planToWatch.length > 0 && (
+					<>
+						<p
+							class="title-text no-select"
+							style="margin-top: 20px; font-size: 3vmin; line-height: 3vmin; color: #ffffffcc;"
+						>
+							PLAN TO WATCH
+						</p>
+						<div style="position: relative; width: 100vw; height: 30vmin;">
+							<Carousel
+								anime={store.planToWatch
+									.sort((a, b) => {
+										return new Date(b[1].date).valueOf() - new Date(a[1].date).valueOf();
+									})
+									.map((plan) => {
+										const playbackProgress = store.playbackProgress.get(plan[0]);
+										return {
+											id: plan[0],
+											title: plan[1].title,
+											cover: plan[1].cover,
+											episodeNumber:
+												playbackProgress !== undefined
+													? playbackProgress[playbackProgress.meta.latest.id].episodeNumber
+													: undefined,
+											totalEpisodes: plan[1].total ?? playbackProgress?.meta.total,
+										};
+									})}
+								leftOffset={3}
+							/>
+						</div>
+					</>
 				)}
 				<p
 					class="title-text no-select"
@@ -143,6 +197,15 @@ export const Home = () => {
 			</div>
 			<Outlet />
 			<AnimatePresence>{isSearching && <Search onClickOff={() => setIsSearching(false)} />}</AnimatePresence>
+			<AnimatePresence>
+				{viewHistory && (
+					<ViewHistory
+						onClickOff={() => setViewHistory(false)}
+						playbackProgress={store.rawPlaybackProgress}
+						planToWatch={store.planToWatch}
+					/>
+				)}
+			</AnimatePresence>
 		</>
 	);
 };

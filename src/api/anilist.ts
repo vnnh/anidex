@@ -78,6 +78,7 @@ export interface AnimeCard {
 	image?: string;
 	cover?: string;
 	episodeNumber?: number;
+	totalEpisodes?: number;
 }
 
 export const searchAnime = (text: string): Promise<AnimeSearch> => {

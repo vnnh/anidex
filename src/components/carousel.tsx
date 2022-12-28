@@ -11,6 +11,7 @@ interface CarouselItemProps {
 	cover: string;
 	title: string;
 	episodeNumber?: number;
+	totalEpisodes?: number;
 
 	onclick: () => void;
 }
@@ -48,8 +49,8 @@ const CarouselItem = (props: CarouselItemProps) => {
 					}
 				}}
 				whileHover={{
-					filter: "brightness(0.75)",
-					transition: { duration: 0.3 },
+					filter: "brightness(0.5)",
+					transition: { duration: 0.1 },
 				}}
 			/>
 			<div
@@ -64,12 +65,19 @@ const CarouselItem = (props: CarouselItemProps) => {
 			>
 				{props.title}
 			</p>
-			{props.episodeNumber && (
+			{(props.episodeNumber !== undefined || props.totalEpisodes !== undefined) && (
 				<p
 					class="title-text no-select"
-					style="position: absolute; top: 0; right: 0; padding: 1vmin; border-radius: 0 8px 0 0; margin: 0; font-size: 1.5vmin; line-height: 1.5vmin; color: #fff; background-color: #111111dd; "
+					style="position: absolute; top: 0; right: 0; padding: 1vmin; border-radius: 0 8px 0 0; margin: 0; font-weight: 500; font-size: 1.5vmin; line-height: 1.5vmin; color: #fff; background-color: #111111dd; "
 				>
-					{props.episodeNumber}
+					{props.totalEpisodes === undefined ? (
+						<>{props.episodeNumber}</>
+					) : (
+						<>
+							{props.episodeNumber}
+							<span style="font-weight: 400"> / {props.totalEpisodes}</span>
+						</>
+					)}
 				</p>
 			)}
 		</div>
@@ -90,14 +98,6 @@ export const Carousel = (props: { anime: Array<AnimeCard>; leftOffset?: number }
 			let progress = 0;
 			const scrollCarousel = () => {
 				trackRef.current!.style.transform = `translate(${progress}vmin, 0%)`;
-
-				/*trackRef.current!.animate(
-					{
-						transform: `translate(${progress}vmin, 0%)`,
-					},
-					{ duration: 1200, fill: "forwards" },
-				);*/
-
 				trackRef.current!.setAttribute("progress", `${progress}`);
 
 				Array.from(trackRef.current!.getElementsByClassName("carousel-item")).forEach((trackItem, i) => {
@@ -111,12 +111,6 @@ export const Carousel = (props: { anime: Array<AnimeCard>; leftOffset?: number }
 						(trackItem as HTMLImageElement).style.objectPosition = `${
 							50 - (x / window.innerWidth) * 50
 						}% center`;
-						/*(trackItem as HTMLImageElement).animate(
-							{
-								objectPosition: `${50 - (x / window.innerWidth) * 50}% center`,
-							},
-							{ duration: 1200, fill: "forwards" },
-						);*/
 						trackItem.setAttribute("progress", `${50 - (x / window.innerWidth) * 50}`);
 					}
 				});
@@ -183,6 +177,7 @@ export const Carousel = (props: { anime: Array<AnimeCard>; leftOffset?: number }
 						<CarouselItem
 							cover={v.cover ?? v.image ?? ""}
 							episodeNumber={v.episodeNumber}
+							totalEpisodes={v.totalEpisodes}
 							title={v.title?.romaji ?? "not found"}
 							onclick={() => {
 								ctx.setCurrentAnime(v);
