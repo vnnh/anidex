@@ -1,6 +1,6 @@
 import { motion } from "framer-motion";
 import { useNavigate } from "react-router";
-import { EnimeAnimeId } from "../api/enime";
+import { EnimeAnimeId, EnimeEpisodeId } from "../api/enime";
 import cache from "../util/cache";
 
 export const ViewHistory = ({
@@ -13,6 +13,21 @@ export const ViewHistory = ({
 	planToWatch: Array<[EnimeAnimeId, PlanToWatch]>;
 }) => {
 	const navigate = useNavigate();
+
+	let minutesWatched = 0;
+	for (const [id, progress] of playbackProgress) {
+		if (id === "recent") continue;
+
+		for (const key in progress) {
+			if (key === "meta") continue;
+
+			if (progress[key as EnimeEpisodeId].finished) {
+				minutesWatched += progress.meta.avg;
+			} else {
+				minutesWatched += (progress[key as EnimeEpisodeId].lastTime / 1000) * progress.meta.avg;
+			}
+		}
+	}
 
 	return (
 		<motion.div
@@ -44,6 +59,8 @@ export const ViewHistory = ({
 					Started <b>{Math.max(playbackProgress.length - 1, 0)}</b>
 					<br />
 					Plan to Watch <b>{planToWatch.length}</b>
+					<br />
+					Hours Watched <b>{Math.floor((minutesWatched / 60) * 10) / 10}</b>
 				</div>
 			</div>
 

@@ -2,6 +2,8 @@ type PlaybackProgress = {
 	[key in import("../api/enime").EnimeEpisodeId | "meta"]: key extends "meta"
 		? {
 				latest: { id: import("../api/enime").EnimeEpisodeId };
+				/** average episode duration */
+				avg: number;
 		  }
 		: { finished: boolean; lastTime: number; episodeNumber: number; date: string };
 };

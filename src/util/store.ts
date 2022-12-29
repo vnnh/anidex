@@ -56,6 +56,7 @@ export const savePlaybackProgress = async (
 		},
 		meta: {
 			latest: { id: episodeId as EnimeEpisodeId },
+			avg: cache.currentAnime!.duration,
 		},
 	};
 	await playbackProgressStore.set(`${animeId}`, newStore);
