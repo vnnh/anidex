@@ -1,17 +1,18 @@
 import { StateUpdater } from "preact/hooks";
 import { Store } from "tauri-plugin-store-api";
-import { AnilistAnimeId, AnilistEpisodeId } from "../api/anilist";
+import { EnimeAnimeId, EnimeEpisodeId } from "../api/enime";
+import cache from "./cache";
 
 const FINISHED_THRESHOLD = 60; //seconds
 
 const planStore = new Store(".plan.dat");
 
-export const getPlanToWatch = async (id?: AnilistAnimeId) => {
+export const getPlanToWatch = async (id?: EnimeAnimeId) => {
 	if (id !== undefined) return await planStore.get(id);
 	return await planStore.entries();
 };
 
-export const setPlanToWatch = async (id: AnilistAnimeId, plan?: PlanToWatch) => {
+export const setPlanToWatch = async (id: EnimeAnimeId, plan?: PlanToWatch) => {
 	if (plan === undefined) {
 		await planStore.delete(id);
 	} else {
@@ -25,7 +26,7 @@ export const getRecentlyWatched = async (): Promise<Array<RecentlyWatched>> => {
 	return (await playbackProgressStore.get("recent")) ?? [];
 };
 
-export const getPlaybackProgress = async (id?: AnilistAnimeId) => {
+export const getPlaybackProgress = async (id?: EnimeAnimeId) => {
 	if (id !== undefined) return await playbackProgressStore.get(id);
 	return await playbackProgressStore.entries();
 };
@@ -38,30 +39,23 @@ export const savePlaybackProgress = async (
 	time ??= video.currentTime;
 	if (time <= 0) return;
 
-	const animeId = video.getAttribute("anime-id");
-	const episodeId = video.getAttribute("episode-id");
+	const animeId = cache.currentAnime?.slug;
+	const episodeId = cache.currentEpisode?.id;
+	const episodeNumber = cache.currentEpisode?.number;
 
-	if (animeId === null || episodeId === null) return;
+	if (animeId === undefined || episodeId === undefined) return;
 
-	const _episodeNumber = video.getAttribute("episode-number");
-	const episodeNumber = _episodeNumber !== null ? parseInt(_episodeNumber) : 0;
-
-	const meta = JSON.parse(video.getAttribute("anime-meta") ?? "{}");
 	const isFinished = time >= video.duration - FINISHED_THRESHOLD;
 	const newStore: PlaybackProgress = {
 		...((await playbackProgressStore.get(`${animeId}`)) ?? {}),
-		[episodeId as string]: {
+		[episodeId as EnimeEpisodeId]: {
 			finished: isFinished,
 			lastTime: time,
 			episodeNumber,
 			date: new Date().toUTCString(),
 		},
 		meta: {
-			title: meta.title,
-			cover: meta.cover,
-			total: meta.total,
-			latest: { id: episodeId as AnilistEpisodeId },
-			completed: isFinished && episodeNumber === meta.total ? { date: new Date().toUTCString() } : undefined,
+			latest: { id: episodeId as EnimeEpisodeId },
 		},
 	};
 	await playbackProgressStore.set(`${animeId}`, newStore);
@@ -71,8 +65,8 @@ export const savePlaybackProgress = async (
 	);
 
 	let existing: RecentlyWatched = {
-		id: animeId as AnilistAnimeId,
-		episodeId: episodeId as AnilistEpisodeId,
+		id: animeId as EnimeAnimeId,
+		episodeId: episodeId as EnimeEpisodeId,
 	};
 
 	recent.unshift(existing);
@@ -82,7 +76,7 @@ export const savePlaybackProgress = async (
 	}
 
 	await playbackProgressStore.set("recent", recent);
-	await setPlanToWatch(animeId as AnilistAnimeId);
+	await setPlanToWatch(animeId as EnimeAnimeId);
 
 	if (setRecentlyWatched !== undefined) setRecentlyWatched((prev) => prev + 1);
 

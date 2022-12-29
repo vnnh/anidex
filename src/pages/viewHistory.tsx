@@ -1,8 +1,7 @@
 import { motion } from "framer-motion";
-import { useContext } from "preact/hooks";
 import { useNavigate } from "react-router";
-import { AnilistAnimeId } from "../api/anilist";
-import { AppContext } from "../components/app";
+import { EnimeAnimeId } from "../api/enime";
+import cache from "../util/cache";
 
 export const ViewHistory = ({
 	onClickOff,
@@ -10,11 +9,10 @@ export const ViewHistory = ({
 	planToWatch,
 }: {
 	onClickOff: () => void;
-	playbackProgress: Array<[AnilistAnimeId, PlaybackProgress]>;
-	planToWatch: Array<[AnilistAnimeId, PlanToWatch]>;
+	playbackProgress: Array<[EnimeAnimeId, PlaybackProgress]>;
+	planToWatch: Array<[EnimeAnimeId, PlanToWatch]>;
 }) => {
 	const navigate = useNavigate();
-	const ctx = useContext(AppContext);
 
 	return (
 		<motion.div
@@ -43,17 +41,7 @@ export const ViewHistory = ({
 						e.stopImmediatePropagation();
 					}}
 				>
-					Started <b>{playbackProgress.length - 1}</b>
-					<br />
-					Completed{" "}
-					<b>
-						{
-							playbackProgress.filter(
-								([id, playbackProgress]) =>
-									id !== "recent" && playbackProgress.meta.completed !== undefined,
-							).length
-						}
-					</b>
+					Started <b>{Math.max(playbackProgress.length - 1, 0)}</b>
 					<br />
 					Plan to Watch <b>{planToWatch.length}</b>
 				</div>
@@ -70,32 +58,30 @@ export const ViewHistory = ({
 					})
 					.map((v) => {
 						const lastWatched = new Date(v[1][v[1].meta.latest.id].date);
+						const anime = cache.animeInfoCache.get(v[0])!;
 						return (
 							<div
 								class="search-background-image"
 								style={`position: relative; cursor: pointer; display: flex; align-items: center; border-radius: 8px; width: 100%; height: 14vmin; background-color: #333; border-radius: 8px`}
 								onClick={(e) => {
 									e.stopImmediatePropagation();
-									ctx.setTransitionElement(e.currentTarget);
-									ctx.setCurrentAnime({
-										id: v[0],
-										title: v[1].meta.title,
-										cover: v[1].meta.cover,
-									});
+									cache.animeTransitionElement = e.currentTarget;
+									cache.currentAnime = anime;
+									cache.currentEpisode = undefined;
 									navigate(`/${v[0]}`);
 								}}
 							>
 								<img
 									draggable={false}
 									style="position: absolute; width: 100%; height: 100%; object-fit: cover; filter: brightness(0.35); border-radius: 8px"
-									src={v[1].meta.cover}
+									src={anime.bannerImage}
 								/>
 								<div style="z-index:2; margin-left: 1vmin; display: flex; flex-direction: column; gap: 0.5vmin">
 									<span style="margin: 0; font-family: Lato; font-size: 4vmin; line-height: 4vmin; font-weight: 600;">
-										{v[1].meta.title.romaji}
+										{anime.title.romaji}
 									</span>
 									<span style="margin: 0; color: #bbb; font-family: Lato; font-size: 2vmin; line-height: 2vmin; font-weight: 600; font-style: italic">
-										{v[1].meta.title.english}
+										{anime.title.english}
 									</span>
 								</div>
 								<a style="position: absolute; z-index: 2; bottom: 0; right: 0; margin: 1vmin; font-family: Lato; font-size: 1.75vmin; line-height: 1.75vmin; font-weight: 500; color: #ccc">

@@ -1,17 +1,16 @@
 import { RefObject } from "preact";
-import { useContext, useEffect, useRef, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import "../styles/carousel.css";
 import { useNavigate } from "react-router";
-import { AppContext } from "./app";
 import { motion } from "framer-motion";
-import { AnimeCard } from "../api/anilist";
 import gradient from "../util/gradient";
+import { AnimePayload } from "../api/enime";
+import cache from "../util/cache";
 
 interface CarouselItemProps {
 	cover: string;
 	title: string;
 	episodeNumber?: number;
-	totalEpisodes?: number;
 
 	onclick: () => void;
 }
@@ -19,7 +18,6 @@ interface CarouselItemProps {
 const CarouselItem = (props: CarouselItemProps) => {
 	const [isMoving, setMoving] = useState(false);
 	const [x0, setX0] = useState(0);
-	const ctx = useContext(AppContext);
 
 	return (
 		<div style="position: relative;">
@@ -43,7 +41,7 @@ const CarouselItem = (props: CarouselItemProps) => {
 				onMouseUp={(e: MouseEvent) => {
 					if (e.button === 0) {
 						if (!isMoving) {
-							ctx.setTransitionElement((e.currentTarget as HTMLDivElement | undefined) ?? undefined);
+							cache.animeTransitionElement = e.currentTarget as HTMLDivElement;
 							props.onclick();
 						}
 					}
@@ -65,30 +63,26 @@ const CarouselItem = (props: CarouselItemProps) => {
 			>
 				{props.title}
 			</p>
-			{(props.episodeNumber !== undefined || props.totalEpisodes !== undefined) && (
+			{props.episodeNumber !== undefined && (
 				<p
 					class="title-text no-select"
 					style="position: absolute; top: 0; right: 0; padding: 1vmin; border-radius: 0 8px 0 0; margin: 0; font-weight: 500; font-size: 1.5vmin; line-height: 1.5vmin; color: #fff; background-color: #111111dd; "
 				>
-					{props.totalEpisodes === undefined ? (
-						<>{props.episodeNumber}</>
-					) : (
-						<>
-							{props.episodeNumber}
-							<span style="font-weight: 400"> / {props.totalEpisodes}</span>
-						</>
-					)}
+					{props.episodeNumber}
 				</p>
 			)}
 		</div>
 	);
 };
 
-export const Carousel = (props: { anime: Array<AnimeCard>; leftOffset?: number }) => {
+export const Carousel = (props: {
+	anime: Array<{ anime: NullableField<AnimePayload, "episodes" | "relations">; number?: number }>;
+	useCover?: true;
+	leftOffset?: number;
+}) => {
 	const navigate = useNavigate();
 	const containerRef: RefObject<HTMLDivElement> = useRef(null);
 	const trackRef: RefObject<HTMLDivElement> = useRef(null);
-	const ctx = useContext(AppContext);
 
 	useEffect(() => {
 		if (containerRef.current !== null) {
@@ -109,9 +103,9 @@ export const Carousel = (props: { anime: Array<AnimeCard>; leftOffset?: number }
 
 					if (isOnScreen) {
 						(trackItem as HTMLImageElement).style.objectPosition = `${
-							50 - (x / window.innerWidth) * 50
+							50 - (x / window.innerWidth - 0.5) * 30
 						}% center`;
-						trackItem.setAttribute("progress", `${50 - (x / window.innerWidth) * 50}`);
+						trackItem.setAttribute("progress", `${50 - (x / window.innerWidth - 0.5) * 30}`);
 					}
 				});
 			};
@@ -175,13 +169,17 @@ export const Carousel = (props: { anime: Array<AnimeCard>; leftOffset?: number }
 				{props.anime.map((v) => {
 					return (
 						<CarouselItem
-							cover={v.cover ?? v.image ?? ""}
-							episodeNumber={v.episodeNumber}
-							totalEpisodes={v.totalEpisodes}
-							title={v.title?.romaji ?? "not found"}
+							cover={
+								props.useCover
+									? v.anime.coverImage ?? ""
+									: v.anime.bannerImage ?? v.anime.coverImage ?? ""
+							}
+							episodeNumber={v.number}
+							title={v.anime.title?.romaji ?? "not found"}
 							onclick={() => {
-								ctx.setCurrentAnime(v);
-								navigate(`/${v.id}`);
+								cache.currentAnime = v.anime;
+								cache.currentEpisode = undefined;
+								navigate(`/${v.anime.slug}`);
 							}}
 						/>
 					);

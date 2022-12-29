@@ -1,15 +1,14 @@
 import { motion } from "framer-motion";
-import { useContext, useEffect, useRef, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import { JSXInternal } from "preact/src/jsx";
 import { useNavigate } from "react-router";
-import { AnimeSearch, searchAnime } from "../api/anilist";
-import { AppContext } from "../components/app";
+import { AnimeSearch, searchAnime } from "../api/enime";
+import cache from "../util/cache";
 
 export const Search = ({ onClickOff }: { onClickOff: () => void }) => {
-	const [searchResults, setSearchResults] = useState<AnimeSearch["results"]>([]);
+	const [searchResults, setSearchResults] = useState<AnimeSearch["data"]>([]);
 	const inputRef = useRef<HTMLInputElement>(null);
 	const navigate = useNavigate();
-	const ctx = useContext(AppContext);
 
 	useEffect(() => {
 		if (inputRef.current === null) return;
@@ -26,7 +25,7 @@ export const Search = ({ onClickOff }: { onClickOff: () => void }) => {
 
 				searchAnime(value)
 					.then((v) => {
-						setSearchResults(v.results);
+						setSearchResults(v.data);
 					})
 					.catch((e) => console.log(e));
 			}
@@ -100,20 +99,21 @@ export const Search = ({ onClickOff }: { onClickOff: () => void }) => {
 								style={`position: relative; cursor: pointer; display: flex; align-items: center; border-radius: 8px; width: 100%; height: 10vmin; background-color: #333; border-radius: 8px`}
 								onClick={(e) => {
 									e.stopImmediatePropagation();
-									ctx.setTransitionElement(e.currentTarget);
-									ctx.setCurrentAnime(v);
-									navigate(`/${v.id}`);
+									cache.animeTransitionElement = e.currentTarget;
+									cache.currentAnime = v;
+									cache.currentEpisode = undefined;
+									navigate(`/${v.slug}`);
 								}}
 							>
 								<img
 									draggable={false}
 									style="position: absolute; width: 100%; height: 100%; object-fit: cover; filter: brightness(0.35); border-radius: 8px"
-									src={v.cover}
+									src={v.bannerImage}
 								/>
 								<img
 									draggable={false}
 									style="z-index:2; margin-left: 1vmin; width: auto; height: 8vmin; object-fit: cover; border-radius: 8px;"
-									src={v.image}
+									src={v.coverImage}
 								/>
 								<div style="z-index:2; margin-left: 1vmin; display: flex; flex-direction: column; gap: 0.5vmin">
 									<span style="margin: 0; font-family: Lato; font-size: 3vmin; line-height: 3vmin; font-weight: 600;">

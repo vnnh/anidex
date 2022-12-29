@@ -2,12 +2,11 @@ import { Breadcrumbs } from "../components/breadcrumbs";
 import { motion } from "framer-motion";
 import { Outlet, useNavigate } from "react-router";
 import { useContext, useEffect, useState } from "preact/hooks";
-import { AppContext } from "../components/app";
 import gradient from "../util/gradient";
-import { getAnime } from "../api/anilist";
 import { VNode } from "preact";
-import { animeInfoCache } from "../util/cache";
+import cache from "../util/cache";
 import { getPlanToWatch, setPlanToWatch } from "../util/store";
+import { AppContext } from "../components/app";
 
 const Chip = ({ text, filled }: { text: string | VNode; filled: boolean }) => {
 	if (filled) {
@@ -34,37 +33,21 @@ export const Anime = () => {
 	const [planEntry, setPlanEntry] = useState<PlanToWatch | true | null>(null);
 	const [updatePlanEntry, setUpdatePlanEntry] = useState(0);
 	const ctx = useContext(AppContext);
-	const el = ctx.transitionElement as HTMLImageElement | undefined;
+	const el = cache.animeTransitionElement as HTMLImageElement | undefined;
 	const bounds = el ? el.getBoundingClientRect() : undefined;
 
-	const animeCard = ctx.currentAnime;
-	const animeInfo = ctx.currentAnimeInfo;
-
-	const getAnimeInfo = () => {
-		if (animeCard?.id !== undefined) {
-			if (animeInfoCache.has(animeCard.id)) {
-				ctx.setCurrentAnimeInfo(animeInfoCache.get(animeCard.id));
-			} else {
-				getAnime(animeCard.id)
-					.then((v) => {
-						animeInfoCache.set(animeCard.id, v);
-						ctx.setCurrentAnimeInfo(v);
-					})
-					.catch((e) => console.log(e));
-			}
-		}
-	};
-
-	useEffect(getAnimeInfo, [animeCard?.id]);
+	const currentAnime = cache.currentAnime!;
 
 	useEffect(() => {
-		if (animeCard?.id !== undefined) {
-			getPlanToWatch(animeCard.id)
-				.then((v) => setPlanEntry((v as PlanToWatch) ?? true))
-				.catch((e) => console.log(e));
-		}
-	}, [updatePlanEntry, animeCard?.id, ctx.updateRecentlyWatchedCounter]);
+		getPlanToWatch(currentAnime.slug)
+			.then((v) => setPlanEntry((v as PlanToWatch) ?? true))
+			.catch((e) => console.log(e));
+	}, [updatePlanEntry, cache.currentAnime, ctx.updateRecentlyWatchedCounter]);
 
+	const nextDate =
+		currentAnime.next !== undefined && new Date(currentAnime.next).valueOf() > Date.now().valueOf()
+			? new Date(currentAnime.next).toLocaleDateString()
+			: undefined;
 	return (
 		<div style="position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 4;">
 			<motion.div
@@ -93,7 +76,7 @@ export const Anime = () => {
 					position: "relative",
 					objectFit: "cover",
 				}}
-				src={el?.src ?? animeCard?.cover ?? animeCard?.image ?? ""}
+				src={currentAnime.bannerImage ?? currentAnime.coverImage ?? ""}
 				initial={
 					bounds && el
 						? {
@@ -150,7 +133,7 @@ export const Anime = () => {
 						class="play-button"
 						style="position: absolute; top: -4vmin; right: calc(30px + 4vmin); border-radius: 50%; width: 8vmin; height: 8vmin;"
 						onClick={() => {
-							navigate(`/${animeCard?.id}/episodes`);
+							navigate(`/${currentAnime.slug}/episodes`);
 						}}
 					>
 						<p
@@ -161,19 +144,16 @@ export const Anime = () => {
 						</p>
 					</div>
 
-					{animeInfo !== undefined && planEntry !== undefined && (
+					{planEntry !== undefined && (
 						<div
 							class={planEntry === true ? "plan-button" : "unplan-button"}
 							style="z-index: 4; position: absolute; top: -2vmin; right: calc(30px + 14vmin); border-radius: 50%; width: 4vmin; height: 4vmin;"
 							onClick={async () => {
 								await setPlanToWatch(
-									animeInfo.id,
+									currentAnime.slug,
 									planEntry === true
 										? {
-												title: animeInfo.title,
-												cover: animeInfo.cover,
 												date: new Date().toUTCString(),
-												total: animeInfo.totalEpisodes,
 										  }
 										: undefined,
 								);
@@ -191,42 +171,24 @@ export const Anime = () => {
 						</div>
 					)}
 
-					{animeInfo !== undefined && (
-						<div
-							class="refresh-button"
-							style="z-index: 4; position: absolute; top: -2vmin; right: calc(30px + 20vmin); border-radius: 50%; width: 4vmin; height: 4vmin;"
-							onClick={() => {
-								animeInfoCache.delete(animeInfo.id);
-								getAnimeInfo();
-							}}
-						>
-							<p
-								class="material-icons"
-								style="margin-top: 25%; width: 100%; height: 100%; text-align: center; font-size: 2vmin; color: #fff"
-							>
-								refresh
-							</p>
-						</div>
-					)}
 					<img
 						draggable={false}
 						style="position: absolute; z-index: 2; margin-left: 30px; width: 15vmin; height: 20vmin; object-fit: cover; border-radius: 8px;"
-						src={animeCard?.image ?? animeInfo?.image}
+						src={currentAnime.coverImage}
 					/>
 					<div
 						class="no-select"
 						style="margin: 0; padding-top: 15px; padding-left: calc(17vmin + 30px); padding-right: 30px; width: calc(100vw - 21vmin); background-color: #111; color: #ddd;"
 					>
 						<p style="margin: 0; color: #777; font-family: Lato; font-size: 1.5vmin; line-height: 1.5vmin; font-weight: 600; font-style: italic">
-							{animeCard?.title?.english ?? animeInfo?.title.english}
+							{currentAnime.title.english}
 						</p>
 						<p style="margin: 0; font-family: Lato; font-size: 5vmin; line-height: 5vmin; font-weight: 600;">
-							{animeCard?.title?.romaji ?? animeInfo?.title.romaji}
+							{currentAnime.title.romaji}
 						</p>
 						<div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: start; margin: 0; height: 4vmin; row-gap: 4px">
-							{animeInfo?.isAdult && <Chip text="NSFW" filled={true} />}
-							{animeInfo?.type && <Chip text={animeInfo.type.toUpperCase()} filled={false} />}
-							{animeInfo?.rating && (
+							{<Chip text={currentAnime.format.toUpperCase()} filled={false} />}
+							{
 								<Chip
 									text={
 										<>
@@ -237,19 +199,18 @@ export const Anime = () => {
 												star
 											</span>
 											<span style="margin-left: 16px; font-size: 12px">
-												{animeInfo.rating / 10}
+												{currentAnime.averageScore / 10}
 											</span>
 										</>
 									}
 									filled={false}
 								/>
-							)}
-							{animeInfo?.status && <Chip text={animeInfo.status.toUpperCase()} filled={false} />}
+							}
+							{<Chip text={currentAnime.status.toUpperCase()} filled={false} />}
 							<VerticalDivider />
-							{animeInfo?.genres &&
-								animeInfo.genres.map((v) => {
-									return <Chip text={v} filled={false} />;
-								})}
+							{currentAnime.genre.map((v) => {
+								return <Chip text={v} filled={false} />;
+							})}
 						</div>
 					</div>
 				</div>
@@ -258,27 +219,26 @@ export const Anime = () => {
 						class="no-select"
 						style="margin: 20px 20px 0px 30px; color: #777; font-family: Lato; font-size: 1.75vmin; line-height: 1.75vmin;"
 					>
-						{animeInfo &&
-							`${
-								animeInfo.episodes.length === animeInfo.totalEpisodes
-									? `${animeInfo.totalEpisodes}`
-									: `${animeInfo.episodes.length}/${animeInfo.totalEpisodes}`
-							} EPISODES   ·   ${animeInfo.season.toUpperCase()} ${animeInfo.releaseDate}`}
+						{`${currentAnime.season.toUpperCase()} ${currentAnime.year} · ${
+							currentAnime.currentEpisode
+						} EPISODES${nextDate !== undefined ? " · " : ""}`}
+						<span style="color: #ddd">{nextDate !== undefined ? `NEXT ON ${nextDate}` : ""}</span>
 					</p>
 					<p
 						class="no-select"
 						style="margin: 20px 20px 0px 30px; color: #ddd; font-family: Lato; font-size: 2vmin; line-height: 2vmin;"
-						dangerouslySetInnerHTML={{ __html: animeInfo?.description ?? "" }}
-					></p>
+					>
+						{currentAnime.description ?? ""}
+					</p>
 				</div>
 				<div style="width: 30%; text-align: right;">
 					<p
 						class="no-select"
-						style="margin: 20px 30px 0px 0px; color: #777; font-family: Lato; font-size: 1.75vmin; line-height: 1.75vmin;"
+						style="margin: 20px 30px 0px 0px; color: #777; font-family: Lato; font-size: 1.75vmin; line-height: 1.75vmin; white-space: pre;"
 					>
-						<span style="font-weight: 600;">STUDIOS</span>
+						<span style="font-weight: 600;">SYNONYMS</span>
 						<br />
-						{animeInfo?.studios.join(", ")}
+						{currentAnime.synonyms.join("\n")}
 					</p>
 				</div>
 			</motion.div>

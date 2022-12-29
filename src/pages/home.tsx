@@ -1,37 +1,53 @@
 import { AnimatePresence } from "framer-motion";
 import { useContext, useEffect, useState } from "preact/hooks";
 import { Outlet } from "react-router";
-import { AnilistAnimeId, AnimeCard, getRecentEpisodes, getTrending } from "../api/anilist";
+import {
+	EnimeAnimeId,
+	getAnime,
+	getPopular,
+	getRecentEpisodes,
+	RecentEpisodes,
+	SearchAnimePayload,
+} from "../api/enime";
 import { AppContext } from "../components/app";
 import { Carousel } from "../components/carousel";
 import "../styles/search.css";
+import cache from "../util/cache";
 import { getPlanToWatch, getPlaybackProgress, getRecentlyWatched } from "../util/store";
 import { Search } from "./search";
 import { ViewHistory } from "./viewHistory";
 
 export const Home = () => {
-	const [recent, setRecent] = useState<Array<AnimeCard>>([]);
-	const [trending, setTrending] = useState<Array<AnimeCard>>([]);
+	const [trending, setTrending] = useState<Array<SearchAnimePayload>>([]);
+	const [recent, setRecent] = useState<Array<RecentEpisodes["data"][number]>>([]);
 	const [store, setStore] = useState<{
 		recentlyWatched: Array<RecentlyWatched>;
-		playbackProgress: Map<AnilistAnimeId, PlaybackProgress>;
-		rawPlaybackProgress: Array<[AnilistAnimeId, PlaybackProgress]>;
-		planToWatch: Array<[AnilistAnimeId, PlanToWatch]>;
+		playbackProgress: Map<EnimeAnimeId, PlaybackProgress>;
+		rawPlaybackProgress: Array<[EnimeAnimeId, PlaybackProgress]>;
+		planToWatch: Array<[EnimeAnimeId, PlanToWatch]>;
 	}>({ recentlyWatched: [], playbackProgress: new Map(), rawPlaybackProgress: [], planToWatch: [] });
 	const [isSearching, setIsSearching] = useState(false);
 	const [viewHistory, setViewHistory] = useState(false);
 	const ctx = useContext(AppContext);
 
 	useEffect(() => {
-		getTrending()
+		getPopular()
 			.then((value) => {
-				setTrending(value.results ?? []);
+				setTrending(value.data ?? []);
+
+				for (const v of value.data) {
+					cache.animeInfoCache.set(v.slug, v);
+				}
 			})
 			.catch((e) => console.log(e));
 
 		getRecentEpisodes()
 			.then((value) => {
-				setRecent(value.results ?? []);
+				setRecent(value.data ?? []);
+
+				for (const v of value.data) {
+					cache.animeInfoCache.set(v.anime.slug, v.anime);
+				}
 			})
 			.catch((e) => console.log(e));
 	}, []);
@@ -39,16 +55,49 @@ export const Home = () => {
 	useEffect(() => {
 		Promise.all([getRecentlyWatched(), getPlaybackProgress(), getPlanToWatch()])
 			.then((v) => {
-				const progressMap = new Map<AnilistAnimeId, PlaybackProgress>();
-				for (const [id, progress] of v[1] as Array<[AnilistAnimeId, PlaybackProgress]>) {
+				const progressMap = new Map<EnimeAnimeId, PlaybackProgress>();
+				for (const [id, progress] of v[1] as Array<[EnimeAnimeId, PlaybackProgress]>) {
 					progressMap.set(id, progress);
 				}
 
-				setStore({
-					recentlyWatched: v[0],
-					playbackProgress: progressMap,
-					rawPlaybackProgress: v[1] as Array<[AnilistAnimeId, PlaybackProgress]>,
-					planToWatch: v[2] as Array<[AnilistAnimeId, PlanToWatch]>,
+				const promises = [];
+				for (const b of v[0]) {
+					if (!cache.animeInfoCache.has(b.id)) {
+						promises.push(
+							getAnime(b.id).then((v) => {
+								cache.animeInfoCache.set(b.id, v);
+							}),
+						);
+					}
+				}
+
+				for (const [b] of v[1] as Array<[EnimeAnimeId, PlaybackProgress]>) {
+					if (b !== "recent" && !cache.animeInfoCache.has(b)) {
+						promises.push(
+							getAnime(b).then((v) => {
+								cache.animeInfoCache.set(b, v);
+							}),
+						);
+					}
+				}
+
+				for (const [b] of v[2] as Array<[EnimeAnimeId, PlanToWatch]>) {
+					if (!cache.animeInfoCache.has(b)) {
+						promises.push(
+							getAnime(b).then((v) => {
+								cache.animeInfoCache.set(b, v);
+							}),
+						);
+					}
+				}
+
+				Promise.all(promises).then(() => {
+					setStore({
+						recentlyWatched: v[0],
+						playbackProgress: progressMap,
+						rawPlaybackProgress: v[1] as Array<[EnimeAnimeId, PlaybackProgress]>,
+						planToWatch: v[2] as Array<[EnimeAnimeId, PlanToWatch]>,
+					});
 				});
 			})
 			.catch((e) => console.log(e));
@@ -124,20 +173,10 @@ export const Home = () => {
 						<Carousel
 							anime={store.recentlyWatched.map((recent) => {
 								const animeInfo = store.playbackProgress.get(recent.id);
-								if (animeInfo === undefined)
-									return {
-										id: recent.id,
-										title: { english: "not found", native: "not found", romaji: "not found" },
-										cover: "",
-										episodeNumber: 0,
-									};
 
 								return {
-									id: recent.id,
-									title: animeInfo?.meta.title,
-									cover: animeInfo?.meta.cover,
-									episodeNumber: animeInfo?.[recent.episodeId].episodeNumber,
-									totalEpisodes: animeInfo.meta.total,
+									anime: cache.animeInfoCache.get(recent.id)!,
+									number: animeInfo?.[recent.episodeId].episodeNumber,
 								};
 							})}
 							leftOffset={50}
@@ -160,15 +199,13 @@ export const Home = () => {
 									})
 									.map((plan) => {
 										const playbackProgress = store.playbackProgress.get(plan[0]);
+
 										return {
-											id: plan[0],
-											title: plan[1].title,
-											cover: plan[1].cover,
-											episodeNumber:
+											anime: cache.animeInfoCache.get(plan[0])!,
+											number:
 												playbackProgress !== undefined
 													? playbackProgress[playbackProgress.meta.latest.id].episodeNumber
 													: undefined,
-											totalEpisodes: plan[1].total ?? playbackProgress?.meta.total,
 										};
 									})}
 								leftOffset={3}
@@ -183,7 +220,16 @@ export const Home = () => {
 					RECENT
 				</p>
 				<div style="position: relative; width: 100vw; height: 30vmin;">
-					<Carousel anime={recent} leftOffset={3} />
+					<Carousel
+						anime={recent.map((v) => {
+							return {
+								anime: v.anime,
+								number: v.number,
+							};
+						})}
+						leftOffset={3}
+						useCover={true}
+					/>
 				</div>
 				<p
 					class="title-text no-select"
@@ -192,7 +238,13 @@ export const Home = () => {
 					TRENDING
 				</p>
 				<div style="position: relative; width: 100vw; height: 30vmin;">
-					<Carousel anime={trending} leftOffset={3} />
+					<Carousel
+						anime={trending.map((v) => {
+							return { anime: v };
+						})}
+						leftOffset={3}
+						useCover={true}
+					/>
 				</div>
 			</div>
 			<Outlet />

@@ -3,90 +3,100 @@ import { AppContext } from "../components/app";
 import { Breadcrumbs } from "../components/breadcrumbs";
 import { motion } from "framer-motion";
 import gradient from "../util/gradient";
-import { AnilistEpisodeId, getStreamingLinks, StreamingLinks } from "../api/anilist";
 import HLS from "hls.js";
 import { window } from "@tauri-apps/api";
 import "../styles/episodes.css";
 import { clearActivity, setActivity } from "../api/discord";
 import { getPlaybackProgress, savePlaybackProgress } from "../util/store";
+import { EnimeEpisodeId, getEpisodes, getSource } from "../api/enime";
+import cache from "../util/cache";
 
 export const Episodes = () => {
 	const ctx = useContext(AppContext);
-	const animeInfo = ctx.currentAnimeInfo;
-	const [episodeSources, setEpisodeSources] = useState(new Map<AnilistEpisodeId, StreamingLinks>());
-	const [episodeQuality, setEpisodeQuality] = useState("1080p");
+
+	const currentAnime = cache.currentAnime!;
+
+	const [updateSources, setUpdateSources] = useState(false);
 	const [userProgress, setUserProgress] = useState<PlaybackProgress | undefined>();
-	const [loadError, setLoadError] = useState(false);
-	const [currentEpisode, setCurrentEpisode] = useState(animeInfo?.episodes[0]);
+	const [currentEpisode, setCurrentEpisode] = useState<{ id: EnimeEpisodeId; number: number } | undefined>();
+	const episodeDivRef = useRef<HTMLDivElement | null>(null);
 
 	const videoRef = useRef<HTMLVideoElement>(null);
 
 	useEffect(() => {
-		if (animeInfo?.id) {
-			getPlaybackProgress(animeInfo.id).then((v) => {
-				if (v === null) return;
-				if ((v as PlaybackProgress).meta.latest) {
-					const episodeNumber = (v as PlaybackProgress)[(v as PlaybackProgress).meta.latest.id].episodeNumber;
-					const episodeId = (v as PlaybackProgress).meta.latest.id;
-					const episodeMatch = animeInfo.episodes[episodeNumber - 1];
-					if (episodeMatch.id === episodeId) {
-						setCurrentEpisode(episodeMatch);
-					} else {
-						const episodeMatch = animeInfo.episodes.find((v) => v.id === episodeId);
-						if (episodeMatch !== undefined) setCurrentEpisode(episodeMatch);
-					}
-				}
-				setUserProgress(v as PlaybackProgress);
+		if (currentAnime.episodes !== undefined) {
+			setUpdateSources(true);
+		} else {
+			getEpisodes(currentAnime.slug).then((v) => {
+				currentAnime.episodes = v;
+				setUpdateSources(true);
 			});
 		}
-	}, [animeInfo?.id]);
+	}, [currentAnime.episodes]);
 
 	useEffect(() => {
-		if (loadError === true) return;
+		if (currentAnime.episodes === undefined) return;
 
-		if (currentEpisode && !episodeSources.has(currentEpisode.id)) {
-			getStreamingLinks(currentEpisode.id)
-				.then((v) => {
-					if (!v.sources) {
-						setLoadError(true);
-						return;
-					}
+		getPlaybackProgress(currentAnime.slug).then((v) => {
+			if (v === null) {
+				setCurrentEpisode({ id: currentAnime.episodes![0].id, number: currentAnime.episodes![0].number });
+				return;
+			}
 
-					const newMap = new Map(episodeSources);
-					newMap.set(currentEpisode.id, v);
-					setLoadError(false);
-					setEpisodeSources(newMap);
-				})
-				.catch((e) => console.log(e))
-				.finally();
+			if ((v as PlaybackProgress).meta.latest) {
+				const episodeId = (v as PlaybackProgress).meta.latest.id;
+				const episodeNumber = (v as PlaybackProgress)[episodeId].episodeNumber;
+				setCurrentEpisode({ id: episodeId, number: episodeNumber });
+			} else {
+				setCurrentEpisode({ id: currentAnime.episodes![0].id, number: currentAnime.episodes![0].number });
+			}
+
+			setUserProgress(v as PlaybackProgress);
+		});
+	}, [currentAnime.episodes, updateSources]);
+
+	useEffect(() => {
+		if (episodeDivRef.current !== null) {
+			(episodeDivRef.current! as unknown as { scrollIntoViewIfNeeded: () => void }).scrollIntoViewIfNeeded();
 		}
-	}, [currentEpisode, loadError]);
+	}, [episodeDivRef.current]);
 
 	useEffect(() => {
-		let animeId = animeInfo?.id;
-		let episodeId = currentEpisode?.id;
-		let video = videoRef.current;
+		if (currentAnime.episodes === undefined) return;
+		if (currentEpisode === undefined) return;
 
-		const setHLS = (index: number, timePosition?: number) => {
-			const current = episodeSources.get(episodeId!)!.sources[index];
-			if (current === undefined) return;
-			if (current.isM3U8) {
+		const episodeId = currentEpisode.id;
+		const episode = currentAnime.episodes![currentEpisode.number - 1];
+		const video = videoRef.current;
+
+		cache.currentEpisode = {
+			id: episodeId,
+			number: currentEpisode.number,
+		};
+
+		const setHLS = async (timePosition?: number) => {
+			const preferredSource = episode.sources[0];
+			const source = await getSource(preferredSource.id);
+			if (source === undefined) return;
+			const sourceUrl =
+				preferredSource.url !== undefined && preferredSource.url.includes("zoro")
+					? `https://cors.proxy.consumet.org/${source.url}`
+					: source.url;
+
+			if (sourceUrl.endsWith("m3u8")) {
 				const hls = new HLS({ startPosition: timePosition ?? -1 });
-				hls.loadSource(current.url);
+				hls.loadSource(sourceUrl);
 				hls.attachMedia(video!);
 			} else {
-				video!.src = `${current.url}#t=${timePosition ?? 0}`;
+				video!.src = `${sourceUrl}#t=${timePosition ?? 0}`;
 			}
 
 			video!.load();
 		};
 
 		const startTime = (episodeId && userProgress?.[episodeId]?.lastTime) ?? 0;
-		if (video !== null && episodeId !== undefined && episodeSources.has(episodeId)) {
-			setHLS(
-				episodeSources.get(episodeId!)!.sources.findIndex((v) => v.quality === episodeQuality) ?? 0,
-				startTime,
-			);
+		if (video !== null && episodeId !== undefined) {
+			setHLS(startTime);
 		}
 
 		const fullScreenChange = async () => {
@@ -98,22 +108,6 @@ export const Episodes = () => {
 		};
 
 		if (video !== null) {
-			if (animeId !== undefined && episodeId !== undefined) {
-				video.setAttribute("anime-id", animeId);
-				video.setAttribute("episode-id", episodeId);
-
-				video.setAttribute("episode-number", currentEpisode!.number.toString());
-
-				video.setAttribute(
-					"anime-meta",
-					JSON.stringify({
-						cover: animeInfo!.cover,
-						title: animeInfo!.title,
-						total: animeInfo!.totalEpisodes,
-					}),
-				);
-			}
-
 			video.onfullscreenchange = fullScreenChange;
 			video.addEventListener("webkitfullscreenchange", fullScreenChange);
 
@@ -121,10 +115,10 @@ export const Episodes = () => {
 				setActivity({
 					isPlaying: false,
 					duration: Math.floor(video?.duration ?? 0),
-					episode: currentEpisode?.title ?? `Episode ${currentEpisode?.number}`,
-					image: animeInfo?.image ?? "",
+					episode: episode.title ?? `Episode ${episode.number}`,
+					image: currentAnime.coverImage ?? "",
 					progress: Math.floor(video?.currentTime ?? 0),
-					title: animeInfo?.title.romaji ?? "",
+					title: currentAnime.title.romaji ?? "",
 				});
 			};
 
@@ -132,10 +126,10 @@ export const Episodes = () => {
 				setActivity({
 					isPlaying: true,
 					duration: Math.floor(video?.duration ?? 0),
-					episode: currentEpisode?.title ?? `Episode ${currentEpisode?.number}`,
-					image: animeInfo?.image ?? "",
+					episode: episode.title ?? `Episode ${currentEpisode?.number}`,
+					image: currentAnime.coverImage ?? "",
 					progress: Math.floor(video?.currentTime ?? 0),
-					title: animeInfo?.title.romaji ?? "",
+					title: currentAnime.title.romaji ?? "",
 				});
 			};
 		}
@@ -158,7 +152,7 @@ export const Episodes = () => {
 				}
 			}
 		};
-	}, [videoRef.current, currentEpisode, episodeSources, episodeQuality]);
+	}, [videoRef.current, currentEpisode, updateSources]);
 
 	return (
 		<div style="position: absolute; top: 0; left: 0; width: 100vw; height: 100vh;">
@@ -180,91 +174,68 @@ export const Episodes = () => {
 					},
 				}}
 			>
-				<div style="position: absolute; left: 5vmin; top: calc(50% - 35%); width: 25vmin; height: 70%; background-color: #1a1a1a; border-radius: 8px; overflow-y: auto">
-					{animeInfo?.episodes.map((v) => {
-						const currentEpisodeId = currentEpisode?.id;
-						return (
-							<div
-								style={`display: flex; align-items: center; gap: 1vmin; padding: 0 2vmin 1vmin 2vmin; margin: 0; color: ${
-									currentEpisodeId === v.id
-										? "#673ab8"
-										: userProgress?.[v.id]?.finished
-										? "#444"
-										: userProgress?.[v.id] !== undefined
-										? "#777"
-										: "#ccc"
-								}; font-family: Lato; font-size: 1.75vmin; font-weight: 600;`}
-								onClick={() => {
-									setCurrentEpisode(v);
-								}}
-							>
-								<p>{v.number}</p>
-								<p style="text-overflow: ellipsis; white-space: nowrap; overflow: hidden; font-weight: 400;">
-									{v.title !== null ? v.title : `Episode ${v.number}`}
-								</p>
-							</div>
-						);
-					})}
+				<div style="position: absolute; left: 5vmin; top: calc(50% - 35%); width: 28vmin; height: 70%; background-color: #1a1a1a; border-radius: 8px; overflow-y: auto; gap: 1vmin">
+					{currentAnime.episodes !== undefined &&
+						currentAnime.episodes.map((v) => {
+							const currentEpisodeId = currentEpisode?.id;
+
+							return (
+								<div
+									style={`position: relative; font-family: Lato; font-size: 1.75vmin; font-weight: 600; margin: 1vmin; color: ${
+										currentEpisodeId === v.id
+											? "#673ab8"
+											: userProgress?.[v.id]?.finished
+											? "#444"
+											: userProgress?.[v.id] !== undefined
+											? "#777"
+											: "#ccc"
+									}; padding-bottom: 2vmin`}
+									onClick={() => {
+										setCurrentEpisode(v);
+									}}
+									{...(currentEpisodeId === v.id ? { ref: episodeDivRef } : {})}
+								>
+									<img
+										draggable={false}
+										style="width: 100%; object-fit: cover; border-radius: 8px;"
+										src={v.image}
+									/>
+									{`Episode ${v.number}: ${v.title}`}
+								</div>
+							);
+						})}
 				</div>
-				<div style="position: absolute; left: 35vmin; top: calc(50% - 35%); width: min(115vmin, 100% - 40vmin); background-color: #1a1a1a; border-radius: 8px;">
+				<div
+					style={`position: absolute; left: 35vmin; top: calc(50% - 35%); width: min(115vmin, 100% - 40vmin); aspect-ratio: ${
+						16 / 9
+					} background-color: #1a1a1a; border-radius: 8px;`}
+				>
 					<video
 						id={`anime-player`}
 						key={currentEpisode?.id ?? "anime-player"}
 						style={`width: 100%; aspect-ratio: ${16 / 9}; border-radius: 8px;`}
 						controls
-						poster={currentEpisode?.image ?? ""}
+						poster={
+							currentAnime.episodes !== undefined && currentEpisode !== undefined
+								? currentAnime.episodes[currentEpisode.number - 1].image ?? ""
+								: ""
+						}
 						ref={videoRef}
 					/>
 
-					{loadError && (
-						<div
-							style={`position: absolute; top: 0; left: 0; width: 100%; aspect-ratio: ${16 / 9};`}
-							onClick={() => {
-								setLoadError(false);
-							}}
-						>
-							<div
-								class="refresh-button"
-								style="position: absolute; top: calc(50% - 4vmin); left: calc(50% - 4vmin); border-radius: 50%; width: 8vmin; height: 8vmin;"
-							>
-								<p
-									class="material-icons"
-									style="margin-top: 25%; width: 100%; height: 100%; text-align: center; font-size: 4vmin; color: #fff"
-								>
-									refresh
+					<div style="position: relative; width: 100%; aspect-ratio: 16; height: 30px; padding: 10px; font-family: Lato; font-weight: 500">
+						{currentAnime.episodes !== undefined && currentEpisode !== undefined && (
+							<>
+								<p style="margin: 0; font-family: Lato; font-size: 2vmin; line-height: 2vmin; font-weight: 600;">
+									{currentAnime.title.romaji}
 								</p>
-							</div>
-						</div>
-					)}
-
-					<div style="position: relative; width: 100%; aspect-ratio: 16; height: 30px; padding: 10px">
-						<div style="display: flex; height: 100%; gap: 1vmin;">
-							{currentEpisode !== undefined &&
-								episodeSources.has(currentEpisode.id) &&
-								episodeSources.get(currentEpisode.id)!.sources.map((v) => {
-									if (v.quality === "default" || v.quality === "backup") return;
-
-									if (v.quality === episodeQuality) {
-										return (
-											<div style="cursor: pointer; height: 20px; background-color: #fff; border-radius: 8px; padding: 2px 6px 2px 6px; color: #111; font-family: Lato; font-size: 14px; font-weight: 600">
-												{v.quality}
-											</div>
-										);
-									} else {
-										return (
-											<div
-												class="quality-button"
-												style="height: 20px; padding: 2px 6px 2px 6px; font-family: Lato; font-size: 14px;"
-												onClick={() => {
-													setEpisodeQuality(v.quality);
-												}}
-											>
-												{v.quality}
-											</div>
-										);
-									}
-								})}
-						</div>
+								<p style="margin: 0; color: #777; font-family: Lato; font-size: 1.5vmin; line-height: 1.5vmin; font-weight: 600; font-style: italic; padding-top: 0.75vmin">
+									{`Episode ${currentAnime.episodes![currentEpisode.number - 1].number}: ${
+										currentAnime.episodes![currentEpisode.number - 1].title
+									}`}
+								</p>
+							</>
+						)}
 					</div>
 				</div>
 			</motion.div>
